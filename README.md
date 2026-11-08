@@ -13,6 +13,7 @@
 
 - [Project scope](#project-scope)
 - [Tested hardware and environment](#tested-hardware-and-environment)
+- [Development environment setup](#development-environment-setup)
 - [Phase 1 — Device identification](#phase-1--device-identification)
 - [Phase 2 — USB mode switching](#phase-2--usb-mode-switching)
 - [Phase 3 — Driver verification](#phase-3--driver-verification)
@@ -48,6 +49,30 @@ This project **does not contain a custom Wi-Fi driver** and does not establish t
 | USB mode-switching utility | `usb_modeswitch` 2.6.1 |
 
 **Identification caveat:** The `RTL8188GU` label belongs to the initial USB ID description. The operational ID `0bda:c820` matches the Linux `rtw88_8821cu` device table and was verified against the running driver.
+
+## Development environment setup
+
+The repository includes an OS-aware bootstrap script that installs **userspace development and diagnostic tools**, not Wi-Fi kernel drivers.
+
+```bash
+# Inspect the commands before making changes
+bash scripts/setup.sh --dry-run
+
+# Install missing dependencies (prompts for normal package-manager permissions)
+bash scripts/setup.sh
+
+# Check already installed packages, without changing the system
+bash scripts/setup.sh --check
+```
+
+| Platform | Package manager | Dependencies |
+| --- | --- | --- |
+| Debian/Ubuntu Linux | APT | `usb-modeswitch`, `usb-modeswitch-data`, `usbutils`, `iw`, `kmod`, `build-essential`, `pkg-config`, `libusb-1.0-0-dev`, `ripgrep` |
+| macOS | Homebrew | `libusb`, `pkgconf` (with Apple Xcode Command Line Tools providing the C compiler) |
+
+**Notes:** Homebrew is a prerequisite on macOS and is never downloaded or installed automatically by this script. If Apple Command Line Tools are absent, follow `xcode-select --install`. The Linux-only utilities (`iw`, `kmod`, and `usb-modeswitch`) do **not** have direct equivalent roles on macOS and are not installed there. On macOS, `system_profiler SPUSBDataType` can be used for native USB inspection. This script does not enable a macOS Wi-Fi driver or guarantee support on older macOS releases.
+
+The script is repeatable: it checks which packages are installed before attempting installations, and the `--dry-run` option makes no changes.
 
 ## Phase 1 — Device identification
 
