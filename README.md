@@ -104,7 +104,7 @@ The `usb-modeswitch` utility can trigger a device to stop presenting its install
 
 ```bash
 sudo apt update
-sudo apt install usb-modeswitch usb-modeswitch-data iw
+sudo apt install usb-modeswitch usb-modeswitch-data iw kmod
 ```
 
 | Package | Purpose |
