@@ -2,10 +2,10 @@
 
 > A systems programming research project documenting Realtek USB device identification, USB mode switching, Linux kernel driver verification, and future cross-platform C/`libusb` development.
 
-**Current stage:** Linux USB identification and wireless scanning verified. C development has not started.  
+**Current stage:** Linux driver/scanning validation complete; first read-only C/`libusb` utility (v0.1) built and executed successfully.  
 **Observed transition:** `0bda:1a2b` (virtual CD-ROM mode) → `0bda:c820` (802.11ac mode).  
 **Verified:** Linux kernel driver binding and wireless scanning on 2.4 GHz and 5 GHz.  
-**Not yet tested:** Connecting to a Wi-Fi network, transferring packets, Bluetooth functionality, or native macOS support.
+**Not yet tested:** Connecting to a Wi-Fi network, transferring packets, Bluetooth functionality, or native macOS support. The C utility has been tested on Debian Linux only.
 
 > **Privacy notice:** This public version is intentionally sanitized. Hostnames, usernames, network names (SSIDs), network interface identifiers derived from MAC addresses, IP addresses, and raw scan data are excluded. Terminal excerpts are either limited to relevant lines or labeled *sanitized*. The adapter's USB VID:PID values and driver names are retained because they are needed to reproduce the hardware investigation.
 
@@ -17,6 +17,7 @@
 - [Phase 2 — USB mode switching](#phase-2--usb-mode-switching)
 - [Phase 3 — Driver verification](#phase-3--driver-verification)
 - [Phase 4 — Wireless scanning](#phase-4--wireless-scanning)
+- [Phase 5 — USB Device Inspector v0.1 (C / libusb)](#phase-5--usb-device-inspector-v01-c--libusb)
 - [Reproducing the checks safely](#reproducing-the-checks-safely)
 - [Development roadmap](#development-roadmap)
 - [Privacy and evidence policy](#privacy-and-evidence-policy)
@@ -26,9 +27,9 @@
 
 Some USB Wi-Fi adapters initially present themselves as a **virtual CD-ROM / mass-storage device** containing installation software. They must then re-enumerate under another USB product identifier before an operating system can use the wireless interface.
 
-This repository tracks the investigation of a Realtek USB Wi-Fi adapter on Debian Linux. Planned work includes a portable, read-only USB inspector in **C / `libusb`**, analysis of the **Linux `rtw88` driver**, and research into constraints affecting **macOS** support.
+This repository tracks the investigation of a Realtek USB Wi-Fi adapter on Debian Linux. The first milestone is a portable, read-only USB inspector in **C / `libusb`**. Further work includes analysis of the **Linux `rtw88` driver** and research into constraints affecting **macOS** support.
 
-This project **does not yet contain a custom Wi-Fi driver** or establish that native macOS Wi-Fi support is possible for this adapter.
+This project **does not contain a custom Wi-Fi driver** and does not establish that native macOS Wi-Fi support is possible for this adapter. The v0.1 utility is a separate userspace diagnostic program; the operating system continues to use its existing driver.
 
 ## Tested hardware and environment
 
@@ -43,6 +44,7 @@ This project **does not yet contain a custom Wi-Fi driver** or establish that na
 | Operational-mode description | `802.11ac NIC` |
 | Identified Linux driver | `rtw88_8821cu` (module) / `rtw_8821cu` (bound USB driver) |
 | Wireless scan | Successful on 2.4 GHz and 5 GHz |
+| Userspace USB inspector | v0.1 (compiled and executed on Debian) |
 | USB mode-switching utility | `usb_modeswitch` 2.6.1 |
 
 **Identification caveat:** The `RTL8188GU` label belongs to the initial USB ID description. The operational ID `0bda:c820` matches the Linux `rtw88_8821cu` device table and was verified against the running driver.
@@ -285,6 +287,76 @@ Suggested public filename: `docs/images/04-wireless-scan.png`.
 
 <!-- Add a Markdown image link here ONLY after creating and reviewing a sanitized screenshot. -->
 
+## Phase 5 — USB Device Inspector v0.1 (C / libusb)
+
+This phase marks the **first code written for the repository**. The goal is to identify the adapter directly through the `libusb` API, without invoking `lsusb` or replacing the existing Linux Wi-Fi driver.
+
+### Source code
+
+**File:** [`src/usb_device_info.c`](src/usb_device_info.c)
+
+The initial implementation:
+
+1. Initializes a `libusb` context with `libusb_init()`.
+2. Enumerates attached USB devices using `libusb_get_device_list()`.
+3. Reads each device descriptor via `libusb_get_device_descriptor()`.
+4. Filters for vendor `0x0bda` and product `0x1a2b` (installer) or `0xc820` (Wi-Fi).
+5. Prints the observed VID, PID, and matching device mode.
+6. Releases the device list and `libusb` context before exiting.
+
+**Limitations:** v0.1 identifies the adapter from known USB IDs only. It does not claim USB interfaces, transmit commands, scan wireless networks, modify firmware, or implement a Wi-Fi driver.
+
+### Build requirements (Debian Linux)
+
+```bash
+sudo apt update
+sudo apt install build-essential pkg-config libusb-1.0-0-dev
+```
+
+### Build
+
+Run these commands from the repository root:
+
+```bash
+mkdir -p build
+gcc -std=c11 -Wall -Wextra -O2 \
+    src/usb_device_info.c \
+    -o build/usb_device_info \
+    $(pkg-config --cflags --libs libusb-1.0)
+```
+
+### Run
+
+```bash
+./build/usb_device_info
+```
+
+**Observed terminal result (Debian Linux, v0.1):**
+
+```text
+====================================
+     RTL8821CU USB DEVICE INSPECTOR
+====================================
+
+Vendor ID:  0x0bda
+Product ID: 0xc820
+Mode:       Wi-Fi (802.11ac)
+```
+
+**Result:** The program compiled and successfully identified the USB Wi-Fi adapter. This verifies basic device enumeration and descriptor-based identification using `libusb`. It does **not** verify network connectivity.
+
+No screenshot is necessary here: the sanitized terminal output above is sufficient evidence and does not reveal hostnames, usernames, MAC addresses, or nearby networks.
+
+### Cross-platform status
+
+`libusb` supports several operating systems, including macOS, but **this project has not yet been compiled or tested on macOS**. macOS USB access and native Wi-Fi driver support are different engineering problems.
+
+### Next development milestone
+
+- Inspect USB configurations, interfaces, and endpoints (Inspector v0.2).
+- Add structured error handling and tests.
+- Keep development tools separate from the kernel driver.
+
 ## Reproducing the checks safely
 
 The commands below inspect a **separate USB adapter** without unloading the kernel's Wi-Fi modules or changing the host's current network connection. Do not change the primary network interface while connected remotely over SSH.
@@ -341,7 +413,8 @@ Never upload the full raw scan output or shell history to a public repository.
 - [x] Verify wireless scanning on 2.4 GHz and 5 GHz
 - [ ] Verify Wi-Fi association and actual data transfer
 - [ ] Isolate a repeatable USB mode-switch procedure
-- [ ] Build a read-only USB inspector in C/`libusb`
+- [x] Build and run a read-only USB inspector v0.1 in C/`libusb` on Debian
+- [ ] Inspect USB configurations, interfaces, and endpoints (v0.2)
 - [ ] Investigate the Linux kernel's `rtw88` driver architecture
 - [ ] Research feasible USB tooling and networking support on macOS
 - [ ] Add automated tests and reproducible build instructions
@@ -357,7 +430,9 @@ This repository is intended for **public sharing**. Only the technical data nece
 - Screenshots of terminal windows containing identifying network details or unrelated device inventories.
 - Complete `iw dev`, `iw ... scan`, `ip a`, `nmcli`, `journalctl`, or `dmesg` output without reviewing/redacting it first.
 
-**Allowed in this technical record:** publicly documented USB IDs (`0bda:1a2b`, `0bda:c820`), kernel module names, USB interface classes, sanitized excerpts, and non-identifying signal/frequency measurements.
+**Allowed in this technical record:** publicly documented USB IDs (`0bda:1a2b`, `0bda:c820`), kernel module names, USB interface classes, sanitized excerpts, non-identifying signal/frequency measurements, and read-only sample program output.
+
+Compiled binaries in `build/` and unreviewed raw terminal captures must not be committed.
 
 The two included initial screenshots contain no Wi-Fi SSIDs, router credentials, IP addresses, or MAC addresses visible in the provided images. They do, however, enumerate unrelated USB hardware. **Review them before publication** if even that hardware inventory should remain private; consider replacing the screenshots with carefully cropped evidence containing only the Realtek adapter lines.
 
@@ -370,4 +445,4 @@ The two included initial screenshots contain no Wi-Fi SSIDs, router credentials,
 
 ---
 
-*Research log: documented observations only; software development and connectivity testing remain pending.*
+*Research log: first userspace diagnostic tool (v0.1) verified; native drivers, network connectivity testing, and macOS support remain pending.*
