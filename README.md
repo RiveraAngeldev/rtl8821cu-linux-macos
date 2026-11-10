@@ -1,4 +1,4 @@
-# RTL8821CU — Linux & macOS USB Wi-Fi
+# RTL8821CU — Linux & macOS USB Wi-Fi Research
 
 > A systems programming research project documenting Realtek USB device identification, USB mode switching, Linux kernel driver verification, and future cross-platform C/`libusb` development.
 
@@ -37,22 +37,56 @@ This project **does not contain a custom Wi-Fi driver** and does not establish t
 
 ## Tested hardware and environment
 
+The same physical Realtek adapter was examined on **Debian Linux** and **macOS Monterey**. The operating systems observed different USB modes; the tables distinguish actual test results from goals that have not yet been demonstrated.
+
+### Debian Linux
+
 | Property | Observed result |
 | --- | --- |
-| Operating system | Debian Linux |
+| Operating system | Debian Linux 13 (Trixie) |
 | Kernel family | Linux 6.12 series |
-| USB vendor | Realtek (`0bda`) |
-| Installation-mode USB ID | `0bda:1a2b` |
-| Installation-mode description | `RTL8188GU 802.11n WLAN Adapter (Driver CDROM Mode)` |
-| Operational-mode USB ID | `0bda:c820` |
-| Operational-mode description | `802.11ac NIC` |
-| Identified Linux driver | `rtw88_8821cu` (module) / `rtw_8821cu` (bound USB driver) |
-| Wireless scan | Successful on 2.4 GHz and 5 GHz |
-| Userspace USB inspector | v0.2 (compiled and executed on Debian and macOS Monterey 12.7.6, Intel x86_64) |
-| USB mode-switching utility on Linux | `usb_modeswitch` 2.6.1 |
-| macOS BOT diagnostic | `src/usb_mode_switch.c` (v5 source; execution unverified) |
+| USB manufacturer | Realtek (`0bda`) |
+| Initial USB VID:PID | `0bda:1a2b` — virtual CD-ROM / installer mode |
+| Initial USB description | `RTL8188GU 802.11n WLAN Adapter (Driver CDROM Mode)` |
+| Later observed VID:PID | `0bda:c820` — `802.11ac NIC` |
+| USB mode-switching tool | `usb_modeswitch` 2.6.1 |
+| Kernel module | `rtw88_8821cu` |
+| Bound USB driver | `rtw_8821cu` |
+| Operational-mode interfaces | 3: Bluetooth (0, 1) and Wi-Fi (2) |
+| Wi-Fi scanning | Confirmed on 2.4 GHz and 5 GHz |
+| C / `libusb` inspector | v0.2 compiled and executed successfully |
+| Wi-Fi association / traffic | Not tested |
+| Mode-switch trigger | Re-enumeration observed, but the exact triggering event was not isolated |
 
-**Identification caveat:** The `RTL8188GU` label belongs to the initial USB ID description. The operational ID `0bda:c820` matches the Linux `rtw88_8821cu` device table and was verified against the running driver.
+### macOS Monterey
+
+| Property | Observed result |
+| --- | --- |
+| Operating system | macOS Monterey 12.7.6 |
+| Computer architecture | Intel (`x86_64`) |
+| C compiler | Apple Clang (`/usr/bin/clang`) |
+| Package manager for `libusb` | Homebrew (`/usr/local/bin/brew`) |
+| `libusb` version | 1.0.30 |
+| `pkg-config` observed | MacPorts executable (`/opt/local/bin/pkg-config`) |
+| Build environment issue | `pkg-config` initially could not locate Homebrew's `libusb-1.0.pc` |
+| Verified build workaround | Set `PKG_CONFIG_PATH` to Homebrew `libusb`'s `lib/pkgconfig` directory in the active terminal |
+| Detected USB VID:PID | `0bda:1a2b` — virtual CD-ROM / installer mode |
+| macOS USB device label | `DISK` (Realtek) |
+| Installer USB configuration | 1 interface: 0, Mass Storage `0x08`, SCSI subclass `0x06`, BOT protocol `0x50` |
+| Installer endpoints | Bulk IN `0x8a`; Bulk OUT `0x0b`; 512-byte maximum USB packets |
+| C / `libusb` inspector | v0.2 compiled and executed successfully |
+| `libusb` device access | Open and close verified |
+| Interface ownership | Driver initially reported active; subsequently no active driver reported after USB client applications were closed |
+| Interface access | Interface 0 successfully claimed and released |
+| BOT command tests | CBW sent; CSW received with `status=1` for SCSI `0x1e` (earlier versions) |
+| `REQUEST SENSE` experiment | A 13-byte CSW, rather than expected sense data, was observed (v4) |
+| Latest diagnostic source | `src/usb_mode_switch.c` v5; execution result not yet supplied |
+| USB mode switch to `0bda:c820` | Not verified; adapter remained in installation mode |
+| Native macOS Wi-Fi networking | Not implemented or verified |
+
+**Identification caveat:** The `RTL8188GU` label is associated with the installation-mode ID and is not sufficient to identify the operational chipset. The later `0bda:c820` device matched the Linux `rtw88_8821cu` driver and its running USB binding.
+
+**Privacy:** Temporary USB bus/device numbers, registry session identifiers, device serials, private network information, hostnames, and local user account names are intentionally omitted from these environment tables.
 
 ## Development environment setup
 
@@ -77,6 +111,37 @@ bash scripts/setup.sh --check
 **Notes:** Homebrew is a prerequisite on macOS and is never downloaded or installed automatically by this script. If Apple Command Line Tools are absent, follow `xcode-select --install`. The Linux-only utilities (`iw`, `kmod`, and `usb-modeswitch`) do **not** have direct equivalent roles on macOS and are not installed there. On macOS, `system_profiler SPUSBDataType` can be used for native USB inspection. This script does not enable a macOS Wi-Fi driver or guarantee support on older macOS releases.
 
 The script is repeatable: it checks which packages are installed before attempting installations, and the `--dry-run` option makes no changes. It does **not** compile programs or transmit USB commands. Compile each userspace utility with the commands documented in its phase.
+
+### macOS: fix missing `libusb-1.0.pc` and `libusb.h` during compilation
+
+When building `src/usb_mode_switch.c` (or `src/usb_device_info.c`), you may see:
+
+```text
+Package libusb-1.0 was not found in the pkg-config search path.
+No package 'libusb-1.0' found
+src/usb_mode_switch.c:13:10: fatal error: 'libusb.h' file not found
+```
+
+On the tested Intel Mac, **Homebrew installed `libusb`, but `pkg-config` came from MacPorts** and did not search Homebrew's metadata directory. Verify installation and set the search path in **the same terminal session used for compiling**:
+
+```bash
+brew list libusb || brew install libusb
+export PKG_CONFIG_PATH="$(brew --prefix libusb)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+pkg-config --modversion libusb-1.0
+pkg-config --cflags --libs libusb-1.0
+```
+
+Then compile:
+
+```bash
+mkdir -p build
+clang -std=c11 -Wall -Wextra -Wpedantic -O2 \
+  src/usb_mode_switch.c \
+  -o build/usb_mode_switch \
+  $(pkg-config --cflags --libs libusb-1.0)
+```
+
+The missing `libusb.h` error can result from omitted compiler include flags when `pkg-config` fails, rather than from a missing header file. If `brew --prefix libusb` fails, install Homebrew `libusb` first. `scripts/setup.sh` configures this environment **inside the script** for its checks, but a script cannot permanently change the parent shell's `PKG_CONFIG_PATH`; interactive compilation still needs the `export` above.
 
 ## Phase 1 — Device identification
 
@@ -717,7 +782,7 @@ The 13 bytes decode as follows:
 01           | Status: 1 (Command Failed)
 ```
 
-This is **consistent with an unexpected or previously associated CSW** during the REQUEST SENSE data stage; it is not enough to establish whether the cause was firmware behavior, a pending response, or a bug in the host implementation. A Bulk transfer completing successfully does **not** imply that the SCSI command succeeded.
+This is **consistent with a CSW appearing unexpectedly during the REQUEST SENSE data stage**; it is not enough to establish whether the cause was firmware behavior, a pending response, or a bug in the host implementation. A Bulk transfer completing successfully does **not** imply that the SCSI command succeeded.
 
 ### Current diagnostic v5 — build and usage
 
@@ -729,11 +794,41 @@ Install/check dependencies using the existing setup script:
 bash scripts/setup.sh --check
 ```
 
-On macOS systems where Homebrew `libusb` and MacPorts `pkg-config` use different prefixes, configure the shell before compiling:
+#### macOS compilation error: `libusb-1.0.pc` or `libusb.h` not found
+
+If compiling `src/usb_mode_switch.c` produces messages such as:
+
+```text
+Package libusb-1.0 was not found in the pkg-config search path.
+Perhaps you should add the directory containing `libusb-1.0.pc`
+to the PKG_CONFIG_PATH environment variable
+No package 'libusb-1.0' found
+src/usb_mode_switch.c:13:10: fatal error: 'libusb.h' file not found
+#include <libusb.h>
+         ^~~~~~~~~~
+1 error generated.
+```
+
+**First check that Homebrew provides `libusb`:**
+
+```bash
+brew list libusb
+```
+
+If it is not installed, run `brew install libusb pkgconf`. If Homebrew `libusb` is installed but the active `pkg-config` executable cannot find its `.pc` metadata (for example, when `pkg-config` comes from MacPorts), run **in the same Terminal session as the compiler**:
 
 ```bash
 export PKG_CONFIG_PATH="$(brew --prefix libusb)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 ```
+
+Verify package resolution:
+
+```bash
+pkg-config --modversion libusb-1.0
+pkg-config --cflags --libs libusb-1.0
+```
+
+Then rerun the `clang` command below. The `libusb.h` header error may be a downstream consequence of the missing `pkg-config` flags, not evidence that the header is absent from Homebrew. This `export` applies to the current shell session; a standalone `scripts/setup.sh` process cannot automatically export variables back to its parent shell.
 
 Compile from the repository root on macOS:
 
