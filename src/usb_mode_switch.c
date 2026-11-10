@@ -1,14 +1,15 @@
 /*
- * RTL8821CU / Realtek 0bda:1a2b — USB BOT diagnostic v5
+ * RTL8821CU / Realtek 0bda:1a2b — USB BOT mode-switch experiment v6
  *
- * This diagnostic NEVER sends EJECT (SCSI 0x1b), REQUEST SENSE (0x03),
- * USB reset, driver detach, or endpoint clear-halt.
- * Dry-run is default. --execute sends ONE ALLOW MEDIUM REMOVAL (0x1e)
- * command on LUN 0, then reads ONE CSW. Stops on any anomaly.
- *
- * Intentionally restricted to one device with the exact observed
- * mass-storage interface layout and endpoints; no other USB storage
- * devices are accessed.
+ * Reproduces the first two LUN-0 CBWs of usb_modeswitch StandardEject:
+ *  1. ALLOW MEDIUM REMOVAL (0x1e)
+ *  2. START STOP UNIT / EJECT (0x1b, LoEj=1, Start=0)
+ * An SCSI Command Failed (CSW status 1) is not a BOT transport error,
+ * and permits sending the next CBW after a validated CSW.
+ * Stops on invalid CSW, phase errors, or any ambiguous transport state.
+ * One attempt only; no USB reset, no driver detachment, no retry, no LUN 1.
+ * --dry-run is the default. --execute requires explicit confirmation.
+ * Strict device matching; never touches unrelated USB storage hardware.
  */
 #include <libusb.h>
 #include <stdbool.h>
@@ -16,6 +17,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #define TARGET_VID 0x0bda
 #define TARGET_PID 0x1a2b
@@ -90,74 +92,89 @@ static uint32_t fresh_tag(void) {
     return tag ? tag : UINT32_C(0x11223344);
 }
 
-static int one_command(libusb_device_handle *handle, uint32_t tag) {
+/* Return: 0 = valid CSW (status 0 or 1), 1 = transport uncertain/invalid,
+   2 = target disappeared on the eject command; re-enumeration must be checked.
+   status_out is set only for a valid CSW. */
+static int scsi_zero_data(libusb_device_handle *handle, uint32_t tag,
+                          unsigned char opcode, bool eject, unsigned *status_out) {
     unsigned char cbw[31] = {0};
     memcpy(cbw, "USBC", 4);
     write_u32_le(cbw + 4, tag);
-    write_u32_le(cbw + 8, 0); /* No data stage. */
-    cbw[12] = 0x00;          /* Direction irrelevant when transfer length is 0. */
-    cbw[13] = 0;             /* LUN 0 */
-    cbw[14] = 6;             /* 6-byte SCSI CDB */
-    cbw[15] = 0x1e;          /* PREVENT/ALLOW MEDIUM REMOVAL */
-    cbw[19] = 0;             /* Prevent = 0 (allow removal) */
+    write_u32_le(cbw + 8, 0); /* No data stage */
+    cbw[12] = 0;
+    cbw[13] = 0; /* LUN 0 */
+    cbw[14] = 6;
+    cbw[15] = opcode;
+    if (eject) cbw[19] = 0x02; /* START STOP UNIT: LoEj=1, Start=0 */
 
-    printf("[DEBUG] Command: ALLOW MEDIUM REMOVAL (0x1e), LUN 0\n");
+    printf("\n[COMMAND] %s (0x%02x), LUN 0\n",
+           eject ? "START STOP UNIT / EJECT" : "ALLOW MEDIUM REMOVAL", opcode);
     printf("[DEBUG] Expected CSW tag: 0x%08x\n", (unsigned)tag);
-    dump_bytes("[DEBUG] CBW OUT", cbw, (int)sizeof(cbw));
+    dump_bytes("[DEBUG] CBW OUT", cbw, 31);
 
     int transferred = 0;
-    int rc = libusb_bulk_transfer(handle, EP_BULK_OUT, cbw, (int)sizeof(cbw),
+    int rc = libusb_bulk_transfer(handle, EP_BULK_OUT, cbw, 31,
                                   &transferred, TIMEOUT_MS);
-    printf("[USB] CBW OUT result=%s, transferred=%d/31\n",
+    printf("[USB] CBW OUT: %s, transferred=%d/31\n",
            libusb_error_name(rc), transferred);
     if (rc != LIBUSB_SUCCESS || transferred != 31) {
-        puts("[STOP] CBW delivery not confirmed; no more USB transfers.");
-        return 1;
+        puts("[STOP] CBW not fully confirmed; no further commands.");
+        return (eject && rc == LIBUSB_ERROR_NO_DEVICE) ? 2 : 1;
     }
 
-    /* Since the requested transfer length is zero, the next BOT phase is
-       exactly one 13-byte CSW; do not attempt to read sense data here. */
     unsigned char csw[13] = {0};
     transferred = 0;
-    rc = libusb_bulk_transfer(handle, EP_BULK_IN, csw, (int)sizeof(csw),
+    rc = libusb_bulk_transfer(handle, EP_BULK_IN, csw, 13,
                               &transferred, TIMEOUT_MS);
-    printf("[USB] CSW IN result=%s, transferred=%d/13\n",
+    printf("[USB] CSW IN: %s, transferred=%d/13\n",
            libusb_error_name(rc), transferred);
     if (transferred > 0 && transferred <= 13)
-        dump_bytes("[DEBUG] CSW IN raw", csw, transferred);
+        dump_bytes("[DEBUG] CSW IN", csw, transferred);
     if (rc != LIBUSB_SUCCESS || transferred != 13) {
-        puts("[STOP] CSW was not received completely; protocol state uncertain.");
-        return 1;
+        puts("[STOP] CSW absent or incomplete; no more SCSI commands.");
+        return (eject && rc == LIBUSB_ERROR_NO_DEVICE) ? 2 : 1;
     }
 
-    uint32_t received_tag = read_u32_le(csw + 4);
+    uint32_t got_tag = read_u32_le(csw + 4);
     uint32_t residue = read_u32_le(csw + 8);
     unsigned status = csw[12];
-    printf("[DEBUG] CSW signature: %02x %02x %02x %02x\n",
-           csw[0], csw[1], csw[2], csw[3]);
     printf("[DEBUG] CSW tag: expected=0x%08x received=0x%08x\n",
-           (unsigned)tag, (unsigned)received_tag);
+           (unsigned)tag, (unsigned)got_tag);
     printf("[DEBUG] CSW residue=%u status=%u\n", (unsigned)residue, status);
-
-    if (memcmp(csw, "USBS", 4) != 0 || received_tag != tag) {
-        puts("[STOP] Invalid CSW signature/tag; possible BOT desynchronization.");
+    if (memcmp(csw, "USBS", 4) != 0 || got_tag != tag || residue != 0 || status > 2) {
+        puts("[STOP] Invalid or inconsistent CSW. No further commands.");
         return 1;
     }
-    if (status > 2 || (status != 2 && residue != 0)) {
-        puts("[STOP] CSW contents are inconsistent; no further commands.");
+    if (status == 2) {
+        puts("[STOP] BOT phase error; no reset/recovery attempted.");
         return 1;
     }
-    if (status == 0) {
-        puts("[RESULT] Command Passed; no EJECT sent.");
-    } else if (status == 1) {
-        puts("[RESULT] Command Failed (SCSI status), but CSW is valid.");
-        puts("[INFO] No REQUEST SENSE attempted in this isolated test.");
-    } else {
-        puts("[RESULT] Phase Error. Recovery would be required before more BOT commands.");
-        puts("[STOP] No reset or recovery attempted.");
-        return 1;
-    }
+    *status_out = status;
+    printf("[BOT] Valid CSW; SCSI command %s.\n",
+           status == 0 ? "PASSED" : "FAILED (status 1)");
     return 0;
+}
+
+static void report_mode(libusb_context *ctx) {
+    libusb_device **list = NULL;
+    ssize_t n = libusb_get_device_list(ctx, &list);
+    if (n < 0) {
+        printf("[INFO] Post-test USB enumeration failed: %s\n", libusb_error_name((int)n));
+        return;
+    }
+    int installer = 0, wifi = 0;
+    for (ssize_t i = 0; i < n; ++i) {
+        struct libusb_device_descriptor d;
+        if (libusb_get_device_descriptor(list[i], &d) == LIBUSB_SUCCESS &&
+            d.idVendor == TARGET_VID) {
+            if (d.idProduct == TARGET_PID) installer++;
+            if (d.idProduct == 0xc820) wifi++;
+        }
+    }
+    libusb_free_device_list(list, 1);
+    printf("[INFO] Enumeration: installer=%d, wifi-mode=%d\n", installer, wifi);
+    if (wifi > 0) puts("[RESULT] Target Wi-Fi PID 0bda:c820 observed! Driver support on macOS is separate.");
+    else puts("[INFO] Wi-Fi PID not observed. Check with usb_device_info after reconnection.");
 }
 
 int main(int argc, char **argv) {
@@ -169,7 +186,7 @@ int main(int argc, char **argv) {
         return 2;
     }
 
-    puts("=== RTL8821CU USB BOT Diagnostic v5 ===");
+    puts("=== RTL8821CU BOT Mode-Switch Experiment v6 ===");
     libusb_context *ctx = NULL;
     int rc = libusb_init(&ctx);
     if (rc != LIBUSB_SUCCESS) {
@@ -204,19 +221,21 @@ int main(int argc, char **argv) {
         goto cleanup;
     }
     puts("[OK] Unique VID/PID; exact MSC BOT interface and endpoints verified.");
-    puts("[PLAN] One CBW (0x1e), one CSW, then stop. No REQUEST SENSE/EJECT/reset.");
+    puts("[PLAN] LUN 0: ALLOW MEDIUM REMOVAL (0x1e) -> EJECT (0x1b).");
+    puts("[PLAN] Continue after a validated CSW with status 0 OR 1; stop on transport/phase errors.");
+    puts("[SAFE] No LUN 1, no REQUEST SENSE, no USB reset, no driver detach, no retries.");
     if (!execute) {
         puts("[DRY-RUN] No interface claimed; no USB traffic sent.");
         exit_code = 0;
         goto cleanup;
     }
 
-    puts("[WARNING] This sends a real SCSI command to the Realtek installer interface.");
+    puts("[WARNING] This sends REAL SCSI commands and may disconnect/re-enumerate the adapter.");
     puts("[WARNING] Do not run if the device is mounted or being used.");
-    printf("Type DIAG 0bda:1a2b to proceed: ");
+    printf("Type EJECT 0bda:1a2b to proceed: ");
     fflush(stdout);
     char reply[64];
-    if (!fgets(reply, sizeof(reply), stdin) || strcmp(reply, "DIAG 0bda:1a2b\n") != 0) {
+    if (!fgets(reply, sizeof(reply), stdin) || strcmp(reply, "EJECT 0bda:1a2b\n") != 0) {
         puts("[CANCELLED] Confirmation did not match.");
         goto cleanup;
     }
@@ -245,14 +264,40 @@ int main(int argc, char **argv) {
         goto cleanup;
     }
     puts("[OK] Interface 0 claimed.");
-    exit_code = one_command(handle, fresh_tag());
+    uint32_t tag = fresh_tag();
+    unsigned status = 0;
+    int first = scsi_zero_data(handle, tag, 0x1e, false, &status);
+    if (first == 0) {
+        if (status == 1)
+            puts("[INFO] 0x1e was rejected at SCSI level, but BOT is synchronized.");
+        puts("[INFO] Following standard eject sequence with LUN 0 EJECT.");
+        unsigned eject_status = 0;
+        int second = scsi_zero_data(handle, tag + 1, 0x1b, true, &eject_status);
+        if (second == 0) {
+            puts(eject_status == 0 ?
+                 "[RESULT] EJECT command accepted; checking enumeration." :
+                 "[RESULT] EJECT command rejected by SCSI; checking enumeration.");
+            exit_code = eject_status == 0 ? 0 : 1;
+        } else {
+            puts("[INFO] EJECT transport outcome uncertain; checking actual USB ID.");
+            exit_code = 1;
+        }
+    } else {
+        puts("[STOP] First BOT transaction invalid or incomplete; EJECT NOT sent.");
+        exit_code = 1;
+    }
     int release_rc = libusb_release_interface(handle, IFACE_NUM);
     if (release_rc != LIBUSB_SUCCESS)
         printf("[WARN] Release: %s\n", libusb_error_name(release_rc));
     else
         puts("[OK] Interface 0 released.");
     libusb_close(handle);
-    puts("[OK] Device handle closed.");
+    puts("[INFO] Device handle closed.");
+    /* USB re-enumeration can lag behind the command; observation only. */
+    for (int check = 0; check < 3; ++check) {
+        if (check > 0) sleep(2);
+        report_mode(ctx);
+    }
 cleanup:
     if (devices) libusb_free_device_list(devices, 1);
     libusb_exit(ctx);
