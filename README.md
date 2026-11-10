@@ -2,10 +2,24 @@
 
 > A systems programming research project documenting Realtek USB device identification, USB mode switching, Linux kernel driver verification, and future cross-platform C/`libusb` development.
 
+<<<<<<< HEAD
 **Current stage:** Read-only C/`libusb` USB Device Inspector v0.2 built and executed on Debian Linux and macOS Monterey.  
+||||||| parent of 74569ff (docs: add Phase 8 macOS USB BOT research)
+**Current stage:** Linux driver/scanning validation complete; read-only C/`libusb` USB Device Inspector v0.2 built and executed successfully.  
+=======
+**Current stage:** Cross-platform USB Inspector v0.2 verified; macOS USB access and BOT diagnostics implemented in C. Diagnostic v5 is prepared but its execution has not been verified.  
+>>>>>>> 74569ff (docs: add Phase 8 macOS USB BOT research)
 **Observed transition:** `0bda:1a2b` (virtual CD-ROM mode) → `0bda:c820` (802.11ac mode).  
+<<<<<<< HEAD
 **Verified:** Linux driver binding and wireless scanning (2.4/5 GHz); cross-platform USB descriptor enumeration with the same C source.  
 **Not yet tested:** Wi-Fi association, packet transfer, Bluetooth pairing/audio, macOS USB mode switching, or native macOS Wi-Fi networking. The adapter is still in installation mode on macOS.
+||||||| parent of 74569ff (docs: add Phase 8 macOS USB BOT research)
+**Verified:** Linux kernel driver binding and wireless scanning on 2.4 GHz and 5 GHz.  
+**Not yet tested:** Connecting to a Wi-Fi network, transferring packets, Bluetooth pairing/audio functionality, or native macOS support. The C utility has been tested on Debian Linux only.
+=======
+**Verified:** Linux driver binding and 2.4/5 GHz wireless scanning; cross-platform USB descriptor enumeration; on macOS, device open, interface claim/release, a BOT CBW send and CSW reception.  
+**Not yet verified:** Wi-Fi association, packet transfer, Bluetooth pairing/audio, successful macOS mode switching, or native macOS Wi-Fi networking. The adapter remains in installation mode on macOS.
+>>>>>>> 74569ff (docs: add Phase 8 macOS USB BOT research)
 
 > **Privacy notice:** This public version is intentionally sanitized. Hostnames, usernames, network names (SSIDs), network interface identifiers derived from MAC addresses, IP addresses, and raw scan data are excluded. Terminal excerpts are either limited to relevant lines or labeled *sanitized*. The adapter's USB VID:PID values and driver names are retained because they are needed to reproduce the hardware investigation.
 
@@ -20,7 +34,13 @@
 - [Phase 4 — Wireless scanning](#phase-4--wireless-scanning)
 - [Phase 5 — USB Device Inspector v0.1 (C / libusb)](#phase-5--usb-device-inspector-v01-c--libusb)
 - [Phase 6 — USB Device Inspector v0.2 (interfaces and endpoints)](#phase-6--usb-device-inspector-v02-interfaces-and-endpoints)
+<<<<<<< HEAD
 - [Phase 7 — macOS cross-platform validation](#phase-7--macos-cross-platform-validation)
+||||||| parent of 74569ff (docs: add Phase 8 macOS USB BOT research)
+=======
+- [Phase 7 — macOS cross-platform validation](#phase-7--macos-cross-platform-validation)
+- [Phase 8 — macOS USB access and BOT diagnostics](#phase-8--macos-usb-access-and-bot-diagnostics)
+>>>>>>> 74569ff (docs: add Phase 8 macOS USB BOT research)
 - [Reproducing the checks safely](#reproducing-the-checks-safely)
 - [Development roadmap](#development-roadmap)
 - [Privacy and evidence policy](#privacy-and-evidence-policy)
@@ -30,9 +50,21 @@
 
 Some USB Wi-Fi adapters initially present themselves as a **virtual CD-ROM / mass-storage device** containing installation software. They must then re-enumerate under another USB product identifier before an operating system can use the wireless interface.
 
+<<<<<<< HEAD
 This repository tracks the investigation of a Realtek USB Wi-Fi adapter on Debian Linux and macOS. The first milestone is a portable, read-only USB inspector in **C / `libusb`**. Further work includes analysis of the **Linux `rtw88` driver** and research into constraints affecting **macOS** support.
+||||||| parent of 74569ff (docs: add Phase 8 macOS USB BOT research)
+This repository tracks the investigation of a Realtek USB Wi-Fi adapter on Debian Linux. The first milestone is a portable, read-only USB inspector in **C / `libusb`**. Further work includes analysis of the **Linux `rtw88` driver** and research into constraints affecting **macOS** support.
+=======
+This repository tracks the investigation of a Realtek USB Wi-Fi adapter on Debian Linux and macOS. The first milestone is a portable, read-only USB inspector in **C / `libusb`**. The separate `usb_mode_switch.c` experiment can transmit USB Mass Storage commands only with an explicit `--execute` option. Further work includes analysis of the **Linux `rtw88` driver** and research into constraints affecting **macOS** support.
+>>>>>>> 74569ff (docs: add Phase 8 macOS USB BOT research)
 
+<<<<<<< HEAD
 This project **does not contain a custom Wi-Fi driver** and does not establish that native macOS Wi-Fi support is possible for this adapter. The v0.1/v0.2 utilities are separate userspace diagnostic programs; the operating system continues to use its existing driver.
+||||||| parent of 74569ff (docs: add Phase 8 macOS USB BOT research)
+This project **does not contain a custom Wi-Fi driver** and does not establish that native macOS Wi-Fi support is possible for this adapter. The v0.1 utility is a separate userspace diagnostic program; the operating system continues to use its existing driver.
+=======
+This project **does not contain a custom Wi-Fi driver** and does not establish that native macOS Wi-Fi support is possible for this adapter. The inspector and BOT diagnostic are separate userspace programs; this repository does not implement a network driver.
+>>>>>>> 74569ff (docs: add Phase 8 macOS USB BOT research)
 
 ## Tested hardware and environment
 
@@ -47,8 +79,17 @@ This project **does not contain a custom Wi-Fi driver** and does not establish t
 | Operational-mode description | `802.11ac NIC` |
 | Identified Linux driver | `rtw88_8821cu` (module) / `rtw_8821cu` (bound USB driver) |
 | Wireless scan | Successful on 2.4 GHz and 5 GHz |
+<<<<<<< HEAD
 | Userspace USB inspector | v0.2 (compiled and executed on Debian and macOS Monterey 12.7.6, Intel x86_64) |
 | USB mode-switching utility | `usb_modeswitch` 2.6.1 |
+||||||| parent of 74569ff (docs: add Phase 8 macOS USB BOT research)
+| Userspace USB inspector | v0.2 (compiled and executed on Debian) |
+| USB mode-switching utility | `usb_modeswitch` 2.6.1 |
+=======
+| Userspace USB inspector | v0.2 (compiled and executed on Debian and macOS Monterey 12.7.6, Intel x86_64) |
+| USB mode-switching utility on Linux | `usb_modeswitch` 2.6.1 |
+| macOS BOT diagnostic | `src/usb_mode_switch.c` (v5 source; execution unverified) |
+>>>>>>> 74569ff (docs: add Phase 8 macOS USB BOT research)
 
 **Identification caveat:** The `RTL8188GU` label belongs to the initial USB ID description. The operational ID `0bda:c820` matches the Linux `rtw88_8821cu` device table and was verified against the running driver.
 
@@ -74,7 +115,7 @@ bash scripts/setup.sh --check
 
 **Notes:** Homebrew is a prerequisite on macOS and is never downloaded or installed automatically by this script. If Apple Command Line Tools are absent, follow `xcode-select --install`. The Linux-only utilities (`iw`, `kmod`, and `usb-modeswitch`) do **not** have direct equivalent roles on macOS and are not installed there. On macOS, `system_profiler SPUSBDataType` can be used for native USB inspection. This script does not enable a macOS Wi-Fi driver or guarantee support on older macOS releases.
 
-The script is repeatable: it checks which packages are installed before attempting installations, and the `--dry-run` option makes no changes.
+The script is repeatable: it checks which packages are installed before attempting installations, and the `--dry-run` option makes no changes. It does **not** compile programs or transmit USB commands. Compile each userspace utility with the commands documented in its phase.
 
 ## Phase 1 — Device identification
 
@@ -507,6 +548,7 @@ The tables and terminal excerpts above are sufficient documentation for v0.2; **
 ### Status and next steps
 
 - **Verified:** v0.2 compiles and enumerates three interfaces, including five Wi-Fi endpoints on interface 2.
+<<<<<<< HEAD
 - **Not verified:** Wi-Fi association, packet transfer, Bluetooth pairing/audio, or macOS Wi-Fi networking. Descriptor inspection on macOS is verified in Phase 7.
 - **Next:** refactor the inspector into smaller functions, add CLI options (`--help`, `--verbose`), and continue cross-platform tests before attempting any kernel-driver modifications.
 
@@ -639,6 +681,272 @@ Interface 0 (Alt 0)
 - Separately research whether a functional network interface is feasible on this macOS release.
 
 No USB driver was detached, firmware changed, kernel extension installed, SIP disabled, or unrelated storage device ejected during this phase.
+||||||| parent of 74569ff (docs: add Phase 8 macOS USB BOT research)
+- **Not verified:** Wi-Fi association, packet transfer, Bluetooth pairing/audio, or operation under macOS.
+- **Next:** refactor the inspector into smaller functions, add CLI options (`--help`, `--verbose`), and begin portable tests before attempting any kernel-driver modifications.
+=======
+- **Not verified:** Wi-Fi association, packet transfer, Bluetooth pairing/audio, or macOS Wi-Fi networking. Descriptor inspection on macOS is verified in Phase 7.
+- **Next:** refactor the inspector into smaller functions, add CLI options (`--help`, `--verbose`), and continue cross-platform tests before attempting any kernel-driver modifications.
+
+## Phase 7 — macOS cross-platform validation
+
+This phase tests **the existing USB Device Inspector v0.2 on macOS** without modifying the laptop's Wi-Fi drivers, kernel security settings, or unrelated USB storage devices. It validates portable USB **enumeration and descriptor inspection**, not Wi-Fi connectivity.
+
+### Test environment
+
+| Property | Observed value |
+| --- | --- |
+| Operating system | macOS Monterey 12.7.6 |
+| Architecture | Intel (`x86_64`) |
+| C compiler | Apple Clang (`/usr/bin/clang`) |
+| Homebrew executable | `/usr/local/bin/brew` |
+| `pkg-config` executable | `/opt/local/bin/pkg-config` |
+| Homebrew `libusb` | 1.0.30 |
+| Realtek device ID on macOS | `0bda:1a2b` (CD-ROM / installer mode) |
+
+These details identify the development environment, without exposing any hostname, account name, device serial number, or private network information.
+
+### Initial USB detection
+
+The command below was used to inspect macOS USB enumeration:
+
+```bash
+system_profiler SPUSBDataType
+```
+
+**Selected, sanitized output:**
+
+```text
+DISK:
+    Product ID: 0x1a2b
+    Vendor ID: 0x0bda (Realtek Semiconductor Corp.)
+    Manufacturer: Realtek
+    Speed: Up to 480 Mb/s
+```
+
+macOS detected the Realtek device in its installation mode. A separate `diskutil list external` check listed an unrelated external storage device, **not an identified Realtek virtual disk**. No disk-eject operation was performed.
+
+### Dependency troubleshooting: Homebrew and MacPorts
+
+The repository's `scripts/setup.sh --dry-run` correctly detected Darwin and proposed Homebrew packages:
+
+```text
+[INFO] Detected operating system: Darwin
+Would run: brew install libusb pkgconf
+```
+
+The initial installer run installed `libusb` through Homebrew, but its build-environment verification failed because `pkg-config` did not find `libusb-1.0.pc`. The observed tools were in **different package-manager prefixes**: `pkg-config` at `/opt/local/bin` and Homebrew `libusb` under `/usr/local`.
+
+The following **session-local workaround was successfully tested**:
+
+```bash
+export PKG_CONFIG_PATH="$(brew --prefix libusb)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+pkg-config --modversion libusb-1.0
+pkg-config --cflags --libs libusb-1.0
+```
+
+**Observed version:** `1.0.30`. The flags referenced the Homebrew `libusb` include and library directories. This environment variable is a shell-session configuration; it does not require modifying the system-wide linker configuration or disabling macOS protections.
+
+> The setup script was subsequently revised to discover Homebrew's `libusb` pkg-config metadata automatically. **The revised script's `--check` result has not yet been provided**, so only the manual workaround and successful compilation are marked verified here.
+
+### Build and run on macOS
+
+From the repository root:
+
+```bash
+mkdir -p build
+clang -std=c11 -Wall -Wextra -O2 \
+    src/usb_device_info.c \
+    -o build/usb_device_info \
+    $(pkg-config --cflags --libs libusb-1.0)
+./build/usb_device_info
+```
+
+**Observed program output (selected, no private identifiers):**
+
+```text
+====================================
+     RTL8821CU USB DEVICE INSPECTOR
+====================================
+
+Vendor ID:  0x0bda
+Product ID: 0x1a2b
+USB Bus:    20
+USB Device: 11
+Mode:       CD-ROM / Installer
+
+--- USB Configuration ---
+Interfaces: 1
+
+Interface 0 (Alt 0)
+  Class: 0x08
+  Endpoints: 2
+    Endpoint: 0x8a
+      Direction: IN
+      Type: Bulk
+      Max Packet Size: 512 bytes
+    Endpoint: 0x0b
+      Direction: OUT
+      Type: Bulk
+      Max Packet Size: 512 bytes
+```
+
+`0x08` is the USB Mass Storage class. The two bulk endpoints are part of the installation-mode interface. Bus and device numbers are temporary enumeration values, not permanent device identifiers.
+
+### Linux vs. macOS comparison
+
+| Check | Debian Linux | macOS Monterey |
+| --- | --- | --- |
+| C source compiled | Yes | Yes |
+| `libusb` device enumeration | Yes | Yes |
+| USB ID observed | `0bda:c820` | `0bda:1a2b` |
+| Device mode | Wi-Fi operational mode | CD-ROM / installer mode |
+| Interfaces reported by v0.2 | 3 | 1 |
+| USB descriptors read | Yes | Yes |
+| Wireless scanning | Verified with Linux driver | Not available / not tested |
+| Wi-Fi connection and IP traffic | Not tested | Not tested |
+
+**Conclusion:** The inspector's descriptor-reading functionality is now **verified on both platforms**. The antenna has **not** been switched to its operational Wi-Fi ID on macOS, and there is **no demonstrated native macOS Wi-Fi support**.
+
+### Handoff to Phase 8
+
+The next phase investigates device opening, interface ownership, and controlled Bulk-Only Transport (BOT) communication with `libusb`. USB re-enumeration, rather than a timeout or successful write, remains the criterion for a mode-switch result.
+
+During Phase 7, no USB driver was detached, firmware changed, kernel extension installed, SIP disabled, or unrelated storage device ejected.
+
+## Phase 8 — macOS USB access and BOT diagnostics
+
+Phase 8 explores **userspace access to the Realtek installer-mode interface** and the behavior of USB Mass Storage **Bulk-Only Transport (BOT)** commands. Unlike the read-only inspector, the mode-switch experiment has an explicit write-capable mode. **No successful mode transition has been demonstrated on macOS.**
+
+### Tools and source files
+
+| File | Responsibility | USB changes |
+| --- | --- | --- |
+| `src/usb_device_info.c` | Enumerates the adapter and reads USB descriptors | Read-only |
+| `src/usb_access_test.c` | Development experiment for open, driver-status check, claim, and release | Interface claim/release; no SCSI commands |
+| `src/usb_mode_switch.c` | BOT protocol diagnostics (latest v5 source) | Default `--dry-run` is read-only; `--execute` sends **one** SCSI `0x1e` command and reads its CSW |
+
+`usb_mode_switch.c` is currently a **diagnostic utility**, not a verified automatic mode-switcher. The v5 program does not send `START STOP UNIT / EJECT (0x1b)`, `REQUEST SENSE (0x03)`, or USB reset commands. No custom kernel extension or Wi-Fi driver has been installed by these programs.
+
+### Device ownership and access validation (observed)
+
+Initial `libusb` testing successfully opened and closed the Realtek device (`0bda:1a2b`). At first, `libusb_kernel_driver_active(handle, 0)` reported an active driver. An `ioreg` inspection identified an `IOUSBHostInterface@0` and USB user clients associated with third-party applications. After those applications were closed, the user clients were no longer visible and `libusb` reported no active kernel driver for interface 0.
+
+The access test then succeeded in claiming and releasing interface 0:
+
+```text
+[OK] Realtek USB device opened successfully.
+[INFO] No active kernel driver reported.
+[TEST] Claiming USB interface 0...
+[OK] Interface 0 claimed successfully.
+[OK] Interface 0 released successfully.
+[OK] Device handle closed.
+```
+
+This demonstrates successful **interface access for that session**. It does not prove that any particular third-party application was the sole cause of earlier driver ownership, or that the interface will always be available.
+
+### Mass Storage interface and endpoints
+
+The read-only preflight validated the exact installer-mode interface layout:
+
+| Field | Validated value |
+| --- | --- |
+| VID:PID | `0bda:1a2b` |
+| Interface | `0` |
+| Class | `0x08` — Mass Storage |
+| Subclass | `0x06` — SCSI transparent command set |
+| Protocol | `0x50` — Bulk-Only Transport |
+| Bulk OUT endpoint | `0x0b` |
+| Bulk IN endpoint | `0x8a` |
+
+In BOT, a **Command Block Wrapper (CBW)** is a 31-byte command envelope and a **Command Status Wrapper (CSW)** is a 13-byte response. The CSW includes a signature, a tag to correlate it with the CBW, a residue field, and a status byte.
+
+### Experimental history — results from macOS
+
+| Version | Experiment | Observed result |
+| --- | --- | --- |
+| v1 | Descriptor validation, `--dry-run` | Passed; no USB transfers |
+| v2 | Claim interface, send SCSI `ALLOW MEDIUM REMOVAL (0x1e)` on LUN 0 | CBW transfer succeeded; received CSW status `1` (**Command Failed**); EJECT not sent |
+| v3 | Attempt `REQUEST SENSE (0x03)` after command failure | A Bulk IN transfer completed with **13 of 18** requested bytes; the initial diagnostic did not interpret it |
+| v4 | Dump and validate the 13-byte response | The returned bytes were a CSW, not SCSI sense data; the tag did not match the expected `REQUEST SENSE` tag |
+| v5 | Single-command CBW/CSW tracing, no follow-up SCSI commands | **Source prepared; execution not yet verified** |
+
+**Sanitized representative v4 result:**
+
+```text
+[OK] CBW sent: ALLOW MEDIUM REMOVAL (0x1e), LUN 0
+[INFO] CSW: status=1, residue=0, tag=0x11223344
+[INFO] SCSI command failed. Requesting diagnostic sense data...
+[INFO] REQUEST SENSE IN: received 13 of 18 requested bytes
+[RAW] 55 53 42 53 44 33 22 11 00 00 00 00 01
+[WARN] Unexpected CSW tag; stopping.
+[STOP] Diagnostic complete; EJECT not sent.
+[INFO] Current USB enumeration: installer=1, wifi-mode=0
+```
+
+The 13 bytes decode as follows:
+
+```text
+55 53 42 53  | CSW signature ("USBS")
+44 33 22 11  | Tag: 0x11223344 (little-endian)
+00 00 00 00  | Residue: 0
+01           | Status: 1 (Command Failed)
+```
+
+This is **consistent with an unexpected or previously associated CSW** during the REQUEST SENSE data stage; it is not enough to establish whether the cause was firmware behavior, a pending response, or a bug in the host implementation. A Bulk transfer completing successfully does **not** imply that the SCSI command succeeded.
+
+### Current diagnostic v5 — build and usage
+
+The current `src/usb_mode_switch.c` intentionally isolates **one** CBW/CSW transaction, prints the complete outgoing and incoming bytes, verifies the returned tag, and stops on unexpected responses. Its CLI options are `--dry-run` (default) and `--execute`.
+
+Install/check dependencies using the existing setup script:
+
+```bash
+bash scripts/setup.sh --check
+```
+
+On macOS systems where Homebrew `libusb` and MacPorts `pkg-config` use different prefixes, configure the shell before compiling:
+
+```bash
+export PKG_CONFIG_PATH="$(brew --prefix libusb)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+```
+
+Compile from the repository root on macOS:
+
+```bash
+mkdir -p build
+clang -std=c11 -Wall -Wextra -Wpedantic -O2 \
+  src/usb_mode_switch.c \
+  -o build/usb_mode_switch \
+  $(pkg-config --cflags --libs libusb-1.0)
+```
+
+For Debian/Ubuntu, the same command can use `gcc` in place of `clang`.
+
+Check the device without sending data:
+
+```bash
+./build/usb_device_info
+./build/usb_mode_switch --dry-run
+```
+
+**Experimental only — sends a real command:** After verifying that exactly one adapter appears as `0bda:1a2b`, the Realtek virtual storage is not mounted or in use, and no other process is using the USB interface, run the following only in a controlled local test:
+
+```bash
+./build/usb_mode_switch --execute
+```
+
+The program requires the typed confirmation `DIAG 0bda:1a2b`. It sends exactly one SCSI `ALLOW MEDIUM REMOVAL (0x1e)` command to LUN 0, reads one CSW, and stops. This version **does not attempt a mode switch**. Do not repeat `--execute` following a transport error, and do not use `sudo`, driver detachment, or USB reset to force access.
+
+### Findings and next steps
+
+- **Verified:** `libusb` device opening; interface 0 claim/release; sending a SCSI CBW; obtaining CSW responses in earlier versions; macOS remains in installer mode.
+- **Under investigation:** Why the `0x1e` command returns status `1` and why the earlier `REQUEST SENSE` data stage contained a CSW with the previous tag.
+- **Not verified:** v5 execution results; a successful switch to `0bda:c820` on macOS; a native Wi-Fi network interface or connectivity on macOS.
+- **Next test:** Compile v5, run its default dry-run, and collect the **single-command** CBW/CSW diagnostic before changing BOT sequencing or adding a mode-switch action.
+
+Do not commit terminal logs containing application details, device serial numbers, network addresses, usernames, or unrelated USB device inventories.
+>>>>>>> 74569ff (docs: add Phase 8 macOS USB BOT research)
 
 ## Reproducing the checks safely
 
@@ -699,12 +1007,25 @@ Never upload the full raw scan output or shell history to a public repository.
 - [x] Build and run a read-only USB inspector v0.1 in C/`libusb` on Debian
 - [x] Inspect USB configurations, interfaces, and endpoints (v0.2)
 - [ ] Investigate the Linux kernel's `rtw88` driver architecture
+<<<<<<< HEAD
 - [x] Compile and run USB Device Inspector v0.2 on macOS Monterey
 - [x] Identify the Realtek CD-ROM-mode interface and endpoints on macOS
 - [ ] Verify the revised macOS setup script with `--check`
 - [ ] Investigate and validate USB mode switching on macOS
+||||||| parent of 74569ff (docs: add Phase 8 macOS USB BOT research)
+=======
+- [x] Compile and run USB Device Inspector v0.2 on macOS Monterey
+- [x] Identify the Realtek CD-ROM-mode interface and endpoints on macOS
+- [ ] Verify the revised macOS setup script with `--check`
+- [x] Open the Realtek installer-mode USB device from userspace on macOS
+- [x] Claim and release installer interface 0 without detaching a driver
+- [x] Inspect BOT CBW/CSW responses in controlled macOS experiments
+- [ ] Run and evaluate the single-command BOT diagnostic v5
+- [ ] Investigate and validate successful USB mode switching on macOS
+>>>>>>> 74569ff (docs: add Phase 8 macOS USB BOT research)
 - [ ] Research feasible USB tooling and networking support on macOS
-- [ ] Add automated tests and reproducible build instructions
+- [x] Document manual build instructions for `usb_mode_switch.c`
+- [ ] Add automated tests and reproducible build scripts
 
 ## Privacy and evidence policy
 
@@ -729,7 +1050,15 @@ The two included initial screenshots contain no Wi-Fi SSIDs, router credentials,
 - [Linux `rtw88` source code](https://github.com/torvalds/linux/tree/master/drivers/net/wireless/realtek/rtw88)
 - [ALFA Network — RTL8821CU Linux documentation](https://docs.alfa.com.tw/Support/Linux/RTL8821CU/)
 - [usb-modeswitch source code](https://github.com/NetworkManager/usb_modeswitch)
+- [libusb API documentation](https://libusb.sourceforge.io/api-1.0/)
+- [USB Mass Storage Bulk-Only Transport (USB-IF)](https://www.usb.org/document-library/mass-storage-bulk-only-transport-10)
 
 ---
 
+<<<<<<< HEAD
 *Research log: read-only USB Device Inspector v0.2 verified on Debian Linux and macOS Monterey; macOS wireless operation, custom drivers, and network connectivity testing remain pending.*
+||||||| parent of 74569ff (docs: add Phase 8 macOS USB BOT research)
+*Research log: read-only USB Device Inspector v0.2 verified on Debian; custom drivers, network connectivity testing, and macOS support remain pending.*
+=======
+*Research log: USB Inspector v0.2 and macOS interface-access tests verified; experimental BOT command/response findings documented through v4; v5 source prepared, not yet executed; macOS mode switching and Wi-Fi networking remain unverified.*
+>>>>>>> 74569ff (docs: add Phase 8 macOS USB BOT research)
