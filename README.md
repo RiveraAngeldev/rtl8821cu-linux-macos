@@ -1,11 +1,11 @@
-# RTL8821CU — Linux & macOS USB Wi-Fi Research
+# RTL8821CU — Linux & macOS USB Wi-Fi
 
 > A systems programming research project documenting Realtek USB device identification, USB mode switching, Linux kernel driver verification, and future cross-platform C/`libusb` development.
 
-**Current stage:** Cross-platform USB Inspector v0.2 verified; macOS USB access and BOT diagnostics implemented in C. Diagnostic v5 is prepared but its execution has not been verified.  
+**Current stage:** **Phase 9 complete — successful macOS USB mode switching using a C/`libusb` program (v6), independently verified by USB Device Inspector v0.2.**  
 **Observed transition:** `0bda:1a2b` (virtual CD-ROM mode) → `0bda:c820` (802.11ac mode).  
-**Verified:** Linux driver binding and 2.4/5 GHz wireless scanning; cross-platform USB descriptor enumeration; on macOS, device open, interface claim/release, a BOT CBW send and CSW reception.  
-**Not yet verified:** Wi-Fi association, packet transfer, Bluetooth pairing/audio, successful macOS mode switching, or native macOS Wi-Fi networking. The adapter remains in installation mode on macOS.
+**Verified:** Linux driver binding and 2.4/5 GHz wireless scanning; cross-platform USB descriptor enumeration; on macOS, interface claim/release, valid CBW/CSW transactions and re-enumeration to `0bda:c820` after an explicit SCSI eject sequence.  
+**Not yet verified:** Wi-Fi association, packet transfer, Bluetooth pairing/audio, or native macOS Wi-Fi networking. USB operational mode alone does not provide a macOS Wi-Fi driver.
 
 > **Privacy notice:** This public version is intentionally sanitized. Hostnames, usernames, network names (SSIDs), network interface identifiers derived from MAC addresses, IP addresses, and raw scan data are excluded. Terminal excerpts are either limited to relevant lines or labeled *sanitized*. The adapter's USB VID:PID values and driver names are retained because they are needed to reproduce the hardware investigation.
 
@@ -22,6 +22,7 @@
 - [Phase 6 — USB Device Inspector v0.2 (interfaces and endpoints)](#phase-6--usb-device-inspector-v02-interfaces-and-endpoints)
 - [Phase 7 — macOS cross-platform validation](#phase-7--macos-cross-platform-validation)
 - [Phase 8 — macOS USB access and BOT diagnostics](#phase-8--macos-usb-access-and-bot-diagnostics)
+- [Phase 9 — Successful USB mode switching on macOS](#phase-9--successful-usb-mode-switching-on-macos)
 - [Reproducing the checks safely](#reproducing-the-checks-safely)
 - [Development roadmap](#development-roadmap)
 - [Privacy and evidence policy](#privacy-and-evidence-policy)
@@ -80,8 +81,12 @@ The same physical Realtek adapter was examined on **Debian Linux** and **macOS M
 | Interface access | Interface 0 successfully claimed and released |
 | BOT command tests | CBW sent; CSW received with `status=1` for SCSI `0x1e` (earlier versions) |
 | `REQUEST SENSE` experiment | A 13-byte CSW, rather than expected sense data, was observed (v4) |
-| Latest diagnostic source | `src/usb_mode_switch.c` v5; execution result not yet supplied |
-| USB mode switch to `0bda:c820` | Not verified; adapter remained in installation mode |
+| Latest mode-switch source | `src/usb_mode_switch.c` v6; executed successfully with explicit confirmation |
+| SCSI `0x1e` (`ALLOW MEDIUM REMOVAL`) | Valid CSW with `status=1` (command failed) |
+| SCSI `0x1b` (`START STOP UNIT / EJECT`) | Valid CSW with `status=0` (command passed) |
+| USB mode switch to `0bda:c820` | **Verified on macOS** through `libusb` re-enumeration and a separate inspector run |
+| Operational-mode USB interfaces | 3: Bluetooth interfaces 0 and 1, vendor-specific Wi-Fi interface 2 |
+| Operational-mode Wi-Fi interface endpoints | `0x84` Bulk IN, `0x05` Bulk OUT, `0x06` Bulk OUT, `0x87` Interrupt IN, `0x08` Bulk OUT |
 | Native macOS Wi-Fi networking | Not implemented or verified |
 
 **Identification caveat:** The `RTL8188GU` label is associated with the installation-mode ID and is not sufficient to identify the operational chipset. The later `0bda:c820` device matched the Linux `rtw88_8821cu` driver and its running USB binding.
@@ -695,7 +700,7 @@ Interface 0 (Alt 0)
 | Wireless scanning | Verified with Linux driver | Not available / not tested |
 | Wi-Fi connection and IP traffic | Not tested | Not tested |
 
-**Conclusion:** The inspector's descriptor-reading functionality is now **verified on both platforms**. The antenna has **not** been switched to its operational Wi-Fi ID on macOS, and there is **no demonstrated native macOS Wi-Fi support**.
+**Conclusion:** The inspector's descriptor-reading functionality is now **verified on both platforms**. At the time of Phase 7, the adapter had **not** been switched to its operational Wi-Fi ID on macOS. The successful switch was subsequently demonstrated in Phase 9; native macOS Wi-Fi networking remains unverified.
 
 ### Handoff to Phase 8
 
@@ -713,9 +718,9 @@ Phase 8 explores **userspace access to the Realtek installer-mode interface** an
 | --- | --- | --- |
 | `src/usb_device_info.c` | Enumerates the adapter and reads USB descriptors | Read-only |
 | `src/usb_access_test.c` | Development experiment for open, driver-status check, claim, and release | Interface claim/release; no SCSI commands |
-| `src/usb_mode_switch.c` | BOT protocol diagnostics (latest v5 source) | Default `--dry-run` is read-only; `--execute` sends **one** SCSI `0x1e` command and reads its CSW |
+| `src/usb_mode_switch.c` | Phase 8 BOT diagnostics (v5), followed by successful Phase 9 mode switch (v6) | Default `--dry-run` remains read-only; current v6 `--execute` sends `0x1e` and conditional `0x1b` to LUN 0 |
 
-`usb_mode_switch.c` is currently a **diagnostic utility**, not a verified automatic mode-switcher. The v5 program does not send `START STOP UNIT / EJECT (0x1b)`, `REQUEST SENSE (0x03)`, or USB reset commands. No custom kernel extension or Wi-Fi driver has been installed by these programs.
+During Phase 8, `usb_mode_switch.c` was a **diagnostic utility**, not yet a verified mode-switcher. The historical v5 program does not send `START STOP UNIT / EJECT (0x1b)`, `REQUEST SENSE (0x03)`, or USB reset commands. No custom kernel extension or Wi-Fi driver has been installed by these programs.
 
 ### Device ownership and access validation (observed)
 
@@ -758,7 +763,7 @@ In BOT, a **Command Block Wrapper (CBW)** is a 31-byte command envelope and a **
 | v2 | Claim interface, send SCSI `ALLOW MEDIUM REMOVAL (0x1e)` on LUN 0 | CBW transfer succeeded; received CSW status `1` (**Command Failed**); EJECT not sent |
 | v3 | Attempt `REQUEST SENSE (0x03)` after command failure | A Bulk IN transfer completed with **13 of 18** requested bytes; the initial diagnostic did not interpret it |
 | v4 | Dump and validate the 13-byte response | The returned bytes were a CSW, not SCSI sense data; the tag did not match the expected `REQUEST SENSE` tag |
-| v5 | Single-command CBW/CSW tracing, no follow-up SCSI commands | **Source prepared; execution not yet verified** |
+| v5 | Single-command CBW/CSW tracing, no follow-up SCSI commands | **Executed in Phase 9:** valid tag/signature; `status=1` SCSI failure, BOT synchronized |
 
 **Sanitized representative v4 result:**
 
@@ -784,9 +789,9 @@ The 13 bytes decode as follows:
 
 This is **consistent with a CSW appearing unexpectedly during the REQUEST SENSE data stage**; it is not enough to establish whether the cause was firmware behavior, a pending response, or a bug in the host implementation. A Bulk transfer completing successfully does **not** imply that the SCSI command succeeded.
 
-### Current diagnostic v5 — build and usage
+### Historical v5 diagnostic, build and troubleshooting
 
-The current `src/usb_mode_switch.c` intentionally isolates **one** CBW/CSW transaction, prints the complete outgoing and incoming bytes, verifies the returned tag, and stops on unexpected responses. Its CLI options are `--dry-run` (default) and `--execute`.
+The Phase 8 v5 diagnostic (preserved in this history) intentionally isolates **one** CBW/CSW transaction, prints the complete outgoing and incoming bytes, verifies the returned tag, and stops on unexpected responses. Its CLI options are `--dry-run` (default) and `--execute`.
 
 Install/check dependencies using the existing setup script:
 
@@ -855,16 +860,131 @@ Check the device without sending data:
 ./build/usb_mode_switch --execute
 ```
 
-The program requires the typed confirmation `DIAG 0bda:1a2b`. It sends exactly one SCSI `ALLOW MEDIUM REMOVAL (0x1e)` command to LUN 0, reads one CSW, and stops. This version **does not attempt a mode switch**. Do not repeat `--execute` following a transport error, and do not use `sudo`, driver detachment, or USB reset to force access.
+This paragraph describes the **historical v5 diagnostic**, which required `DIAG 0bda:1a2b` and sent one SCSI `0x1e` command. **The current repository program is v6**, requiring `EJECT 0bda:1a2b`, with the successful result documented in Phase 9. Do not repeat `--execute` following a transport error, and do not use `sudo`, driver detachment, or USB reset to force access.
 
 ### Findings and next steps
 
-- **Verified:** `libusb` device opening; interface 0 claim/release; sending a SCSI CBW; obtaining CSW responses in earlier versions; macOS remains in installer mode.
-- **Under investigation:** Why the `0x1e` command returns status `1` and why the earlier `REQUEST SENSE` data stage contained a CSW with the previous tag.
-- **Not verified:** v5 execution results; a successful switch to `0bda:c820` on macOS; a native Wi-Fi network interface or connectivity on macOS.
-- **Next test:** Compile v5, run its default dry-run, and collect the **single-command** CBW/CSW diagnostic before changing BOT sequencing or adding a mode-switch action.
+- **Verified during Phase 8:** `libusb` opening, interface claim/release, CBW transmission and CSW reception.
+- **Subsequently verified:** v5 single-command BOT tracing returned a valid CSW with `status=1`; Phase 9 v6 successfully performed the mode transition.
+- **Still unknown:** why `0x1e` reports SCSI failure, and why earlier v4 sense-data handling saw a CSW. These uncertainties did not prevent the separately validated v6 eject sequence.
+- **See Phase 9** for the current source, executable procedure and successful result.
 
 Do not commit terminal logs containing application details, device serial numbers, network addresses, usernames, or unrelated USB device inventories.
+
+## Phase 9 — Successful USB mode switching on macOS
+
+This phase demonstrates a **successful, independently verified change from USB installation mode to operational mode on macOS Monterey** using our own C/`libusb` program. It is a USB mode-switching result, **not a claim of native macOS Wi-Fi networking**.
+
+### Why v6 succeeded
+
+Version v5 isolated one BOT transaction. Its real execution transmitted a 31-byte Command Block Wrapper (CBW) for `ALLOW MEDIUM REMOVAL (0x1e)` and read a matching 13-byte Command Status Wrapper (CSW). The CSW was structurally valid and had `status=1` (*Command Failed*), rather than a USB transport or BOT phase error. Version v6 therefore continued the **LUN 0 standard-eject sequence** after validating this response, sending `START STOP UNIT / EJECT (0x1b)` next.
+
+This is a deliberately narrow device-specific experiment: it **does not** imply that continuing after every failed SCSI command is safe or generally correct. The implementation checks for a matching CSW signature and tag, zero residue, acceptable status, and complete transfers, and stops on invalid/uncertain BOT results.
+
+### Source and safeguards
+
+**Source:** [`src/usb_mode_switch.c`](src/usb_mode_switch.c) — **v6**.
+
+- `--dry-run` (default) validates the exact VID:PID and Mass Storage BOT interface/endpoints without USB writes.
+- `--execute` requires the exact confirmation `EJECT 0bda:1a2b` and sends the LUN 0 commands `0x1e` followed by `0x1b` only after a valid first CSW.
+- Exactly one `0bda:1a2b` device must match; no unrelated storage devices are targeted.
+- No driver detachment, USB reset, LUN 1 access, automatic retries or `REQUEST SENSE` in v6.
+- The eject operation may disconnect/re-enumerate the USB adapter; a disconnect alone is not proof of success. The USB ID must be checked again.
+
+### Build and run on macOS
+
+If Homebrew provides `libusb` but the shell uses MacPorts `pkg-config`, configure the active terminal session before compiling:
+
+```bash
+export PKG_CONFIG_PATH="$(brew --prefix libusb)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+pkg-config --modversion libusb-1.0
+pkg-config --cflags --libs libusb-1.0
+```
+
+```bash
+mkdir -p build
+clang -std=c11 -Wall -Wextra -Wpedantic -O2 \
+  src/usb_mode_switch.c \
+  -o build/usb_mode_switch \
+  $(pkg-config --cflags --libs libusb-1.0)
+
+./build/usb_device_info
+./build/usb_mode_switch --dry-run
+```
+
+**Real device-changing operation — not required if the adapter is already `0bda:c820`:** When precisely one target is still in installation mode, its virtual storage is not mounted/in use, and the interface is available, run a single controlled test:
+
+```bash
+./build/usb_mode_switch --execute
+```
+
+Enter `EJECT 0bda:1a2b` at the prompt. Do not invoke with `sudo` to force access and do not retry automatically after a transport error. The `--execute` result below was observed on the tested MacBook; **no further execution is necessary once the adapter has switched**.
+
+### Verified USB BOT results (v6)
+
+The following output is transcribed from the real execution; only protocol-relevant, non-identifying lines are retained:
+
+```text
+=== RTL8821CU BOT Mode-Switch Experiment v6 ===
+[OK] Unique VID/PID; exact MSC BOT interface and endpoints verified.
+[OK] Interface 0 claimed.
+
+[COMMAND] ALLOW MEDIUM REMOVAL (0x1e), LUN 0
+[USB] CBW OUT: LIBUSB_SUCCESS / LIBUSB_TRANSFER_COMPLETED, transferred=31/31
+[USB] CSW IN: LIBUSB_SUCCESS / LIBUSB_TRANSFER_COMPLETED, transferred=13/13
+[DEBUG] CSW tag: expected=0x3932126a received=0x3932126a
+[DEBUG] CSW residue=0 status=1
+[BOT] Valid CSW; SCSI command FAILED (status 1).
+
+[COMMAND] START STOP UNIT / EJECT (0x1b), LUN 0
+[USB] CBW OUT: LIBUSB_SUCCESS / LIBUSB_TRANSFER_COMPLETED, transferred=31/31
+[USB] CSW IN: LIBUSB_SUCCESS / LIBUSB_TRANSFER_COMPLETED, transferred=13/13
+[DEBUG] CSW tag: expected=0x3932126b received=0x3932126b
+[DEBUG] CSW residue=0 status=0
+[BOT] Valid CSW; SCSI command PASSED.
+[RESULT] EJECT command accepted; checking enumeration.
+[OK] Interface 0 released.
+[INFO] Device handle closed.
+[INFO] Enumeration: installer=0, wifi-mode=1
+[RESULT] Target Wi-Fi PID 0bda:c820 observed! Driver support on macOS is separate.
+```
+
+| Command | BOT result | SCSI status | Finding |
+| --- | --- | --- | --- |
+| `0x1e` — ALLOW MEDIUM REMOVAL | Full CBW/CSW; signatures and tags valid | `1` — Command Failed | BOT remained synchronized |
+| `0x1b` — START STOP UNIT / EJECT | Full CBW/CSW; signatures and tags valid | `0` — Command Passed | Eject accepted |
+| Post-command USB enumeration | Installer count `0`; operational count `1` | — | `0bda:c820` observed |
+
+The intermediate enumeration initially found neither mode and subsequently found the operational ID, consistent with a brief re-enumeration interval. The **new VID:PID**, not merely the accepted eject command, establishes the mode change.
+
+### Independent confirmation using USB Device Inspector v0.2
+
+After v6 finished, a separate execution of `./build/usb_device_info` reported:
+
+```text
+Vendor ID:  0x0bda
+Product ID: 0xc820
+Mode:       Wi-Fi (802.11ac)
+
+--- USB Configuration ---
+Interfaces: 3
+```
+
+All three operational-mode interfaces and their endpoints were enumerated on macOS, matching the Linux-side descriptor layout:
+
+| Interface | USB class | Observed endpoints | Description |
+| --- | --- | --- | --- |
+| 0 (Alt 0) | `0xe0` | `0x81` interrupt IN (16 B), `0x02` bulk OUT (512 B), `0x82` bulk IN (512 B) | Bluetooth transport descriptors |
+| 1 (Alt 0–5) | `0xe0` | `0x03` isochronous OUT and `0x83` isochronous IN, each 0/9/17/25/33/49 B across alternate settings | Bluetooth isochronous descriptors |
+| 2 (Alt 0) | `0xff` | `0x84` bulk IN (512 B), `0x05` bulk OUT (512 B), `0x06` bulk OUT (512 B), `0x87` interrupt IN (64 B), `0x08` bulk OUT (512 B) | Vendor-specific Wi-Fi transport descriptors |
+
+Alternate settings on interface 1 are mutually exclusive. These observations show that macOS can **enumerate the operational USB descriptors**, not that it can associate to a wireless network. No scan, Wi-Fi IP traffic, Bluetooth pairing or native macOS Wi-Fi driver has been verified.
+
+### Phase 9 outcome and Phase 10 direction
+
+**Achieved:** A controlled C/`libusb` LUN 0 eject sequence switched this Realtek adapter from `0bda:1a2b` to `0bda:c820` on macOS; independent descriptor inspection confirmed three operational-mode USB interfaces. This constitutes **one confirmed successful run**, not yet a multi-run reliability study or a guarantee for other Realtek adapters.
+
+**Next research (Phase 10):** Identify which, if any, macOS services bind to operational interface 2, and examine the feasibility and limitations of a userspace USB transport or native networking integration. USB mode switching and native Wi-Fi support are separate engineering problems.
 
 ## Reproducing the checks safely
 
@@ -921,7 +1041,7 @@ Never upload the full raw scan output or shell history to a public repository.
 - [x] Confirm `rtw88` module dependencies
 - [x] Verify wireless scanning on 2.4 GHz and 5 GHz
 - [ ] Verify Wi-Fi association and actual data transfer
-- [ ] Isolate a repeatable USB mode-switch procedure
+- [x] Demonstrate one verified LUN 0 USB mode-switch sequence on macOS (repeatability across reconnections not tested)
 - [x] Build and run a read-only USB inspector v0.1 in C/`libusb` on Debian
 - [x] Inspect USB configurations, interfaces, and endpoints (v0.2)
 - [ ] Investigate the Linux kernel's `rtw88` driver architecture
@@ -931,8 +1051,10 @@ Never upload the full raw scan output or shell history to a public repository.
 - [x] Open the Realtek installer-mode USB device from userspace on macOS
 - [x] Claim and release installer interface 0 without detaching a driver
 - [x] Inspect BOT CBW/CSW responses in controlled macOS experiments
-- [ ] Run and evaluate the single-command BOT diagnostic v5
-- [ ] Investigate and validate successful USB mode switching on macOS
+- [x] Run and evaluate the single-command BOT diagnostic v5
+- [x] Verify successful USB mode switching to `0bda:c820` on macOS with v6
+- [x] Independently verify three operational-mode USB interfaces on macOS
+- [ ] Test switch reliability across multiple controlled reconnections
 - [ ] Research feasible USB tooling and networking support on macOS
 - [x] Document manual build instructions for `usb_mode_switch.c`
 - [ ] Add automated tests and reproducible build scripts
@@ -965,4 +1087,4 @@ The two included initial screenshots contain no Wi-Fi SSIDs, router credentials,
 
 ---
 
-*Research log: USB Inspector v0.2 and macOS interface-access tests verified; experimental BOT command/response findings documented through v4; v5 source prepared, not yet executed; macOS mode switching and Wi-Fi networking remain unverified.*
+*Research log: USB Inspector v0.2 validated on Debian Linux and macOS; v5 BOT command tracing verified; v6 LUN 0 mode switch to `0bda:c820` verified on macOS and independently confirmed by descriptor inspection. Native macOS Wi-Fi networking remains unverified.*
