@@ -2,10 +2,10 @@
 
 > A systems programming research project documenting Realtek USB device identification, USB mode switching, Linux kernel driver verification, and future cross-platform C/`libusb` development.
 
-**Current stage:** Linux driver/scanning validation complete; first read-only C/`libusb` utility (v0.1) built and executed successfully.  
+**Current stage:** Linux driver/scanning validation complete; read-only C/`libusb` USB Device Inspector v0.2 built and executed successfully.  
 **Observed transition:** `0bda:1a2b` (virtual CD-ROM mode) → `0bda:c820` (802.11ac mode).  
 **Verified:** Linux kernel driver binding and wireless scanning on 2.4 GHz and 5 GHz.  
-**Not yet tested:** Connecting to a Wi-Fi network, transferring packets, Bluetooth functionality, or native macOS support. The C utility has been tested on Debian Linux only.
+**Not yet tested:** Connecting to a Wi-Fi network, transferring packets, Bluetooth pairing/audio functionality, or native macOS support. The C utility has been tested on Debian Linux only.
 
 > **Privacy notice:** This public version is intentionally sanitized. Hostnames, usernames, network names (SSIDs), network interface identifiers derived from MAC addresses, IP addresses, and raw scan data are excluded. Terminal excerpts are either limited to relevant lines or labeled *sanitized*. The adapter's USB VID:PID values and driver names are retained because they are needed to reproduce the hardware investigation.
 
@@ -19,6 +19,7 @@
 - [Phase 3 — Driver verification](#phase-3--driver-verification)
 - [Phase 4 — Wireless scanning](#phase-4--wireless-scanning)
 - [Phase 5 — USB Device Inspector v0.1 (C / libusb)](#phase-5--usb-device-inspector-v01-c--libusb)
+- [Phase 6 — USB Device Inspector v0.2 (interfaces and endpoints)](#phase-6--usb-device-inspector-v02-interfaces-and-endpoints)
 - [Reproducing the checks safely](#reproducing-the-checks-safely)
 - [Development roadmap](#development-roadmap)
 - [Privacy and evidence policy](#privacy-and-evidence-policy)
@@ -45,7 +46,7 @@ This project **does not contain a custom Wi-Fi driver** and does not establish t
 | Operational-mode description | `802.11ac NIC` |
 | Identified Linux driver | `rtw88_8821cu` (module) / `rtw_8821cu` (bound USB driver) |
 | Wireless scan | Successful on 2.4 GHz and 5 GHz |
-| Userspace USB inspector | v0.1 (compiled and executed on Debian) |
+| Userspace USB inspector | v0.2 (compiled and executed on Debian) |
 | USB mode-switching utility | `usb_modeswitch` 2.6.1 |
 
 **Identification caveat:** The `RTL8188GU` label belongs to the initial USB ID description. The operational ID `0bda:c820` matches the Linux `rtw88_8821cu` device table and was verified against the running driver.
@@ -376,11 +377,137 @@ No screenshot is necessary here: the sanitized terminal output above is sufficie
 
 `libusb` supports several operating systems, including macOS, but **this project has not yet been compiled or tested on macOS**. macOS USB access and native Wi-Fi driver support are different engineering problems.
 
-### Next development milestone
+### Next development milestone (as planned after v0.1)
 
-- Inspect USB configurations, interfaces, and endpoints (Inspector v0.2).
+- Inspect USB configurations, interfaces, and endpoints (Inspector v0.2) — **completed in Phase 6**.
 - Add structured error handling and tests.
 - Keep development tools separate from the kernel driver.
+
+## Phase 6 — USB Device Inspector v0.2 (interfaces and endpoints)
+
+Version **v0.2** extends [`src/usb_device_info.c`](src/usb_device_info.c) beyond VID/PID detection to inspect the adapter's **active USB configuration**, interface descriptors, alternate settings, and endpoint descriptors. The program was compiled and executed successfully on Debian Linux using the same `libusb` toolchain as v0.1.
+
+### Implementation
+
+- `libusb_get_active_config_descriptor()` obtains the descriptor of the active configuration without claiming an interface.
+- `config->bNumInterfaces` gives the number of USB interfaces.
+- `config->interface[i].altsetting[j]` describes each interface's alternate settings.
+- `bEndpointAddress` indicates endpoint number and direction (IN/OUT).
+- `bmAttributes & LIBUSB_TRANSFER_TYPE_MASK` identifies the transfer type (Control, Isochronous, Bulk, or Interrupt).
+- `wMaxPacketSize` reports the endpoint's maximum USB packet size (not Wi-Fi throughput).
+- `libusb_free_config_descriptor()` releases the allocated configuration descriptor.
+
+This is still a **read-only descriptor inspector**, not a custom Wi-Fi driver. No kernel interfaces are detached, no firmware is modified, and no USB data transfers are initiated by this tool.
+
+### Build and run
+
+From the repository root:
+
+```bash
+mkdir -p build
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 \
+    src/usb_device_info.c \
+    -o build/usb_device_info \
+    $(pkg-config --cflags --libs libusb-1.0)
+./build/usb_device_info
+```
+
+### Verified device summary
+
+**Selected output from the real run (no private network identifiers):**
+
+```text
+RTL8821CU USB DEVICE INSPECTOR
+Vendor ID:  0x0bda
+Product ID: 0xc820
+USB Bus:    1
+USB Device: 6
+Mode:       Wi-Fi (802.11ac)
+
+--- USB Configuration ---
+Interfaces: 3
+```
+
+Bus and device numbers are temporary enumeration values and may change on reconnect.
+
+| USB interface | Alternate settings observed | Class | Driver observed earlier with `lsusb -t` | Purpose |
+| --- | --- | --- | --- | --- |
+| 0 | 0 | `0xe0` | `btusb` | Bluetooth transport |
+| 1 | 0–5 | `0xe0` | `btusb` | Bluetooth isochronous transport |
+| 2 | 0 | `0xff` (vendor-specific) | `rtw_8821cu` | Wi-Fi transport |
+
+### Wi-Fi USB endpoints — interface 2, alternate setting 0
+
+**The following values were read from the device, not inferred or invented:**
+
+```text
+Interface 2 (Alt 0)
+  Class: 0xff
+  Endpoints: 5
+    Endpoint: 0x84
+      Direction: IN
+      Type: Bulk
+      Max Packet Size: 512 bytes
+    Endpoint: 0x05
+      Direction: OUT
+      Type: Bulk
+      Max Packet Size: 512 bytes
+    Endpoint: 0x06
+      Direction: OUT
+      Type: Bulk
+      Max Packet Size: 512 bytes
+    Endpoint: 0x87
+      Direction: IN
+      Type: Interrupt
+      Max Packet Size: 64 bytes
+    Endpoint: 0x08
+      Direction: OUT
+      Type: Bulk
+      Max Packet Size: 512 bytes
+```
+
+| Address | Direction | Transfer type | Maximum USB packet size |
+| --- | --- | --- | --- |
+| `0x84` | Device → host (IN) | Bulk | 512 bytes |
+| `0x05` | Host → device (OUT) | Bulk | 512 bytes |
+| `0x06` | Host → device (OUT) | Bulk | 512 bytes |
+| `0x87` | Device → host (IN) | Interrupt | 64 bytes |
+| `0x08` | Host → device (OUT) | Bulk | 512 bytes |
+
+Bulk endpoints provide reliable transfers, while interrupt endpoints support scheduled polling for notifications/events. The endpoint descriptors alone do **not** establish which internal Wi-Fi queue or firmware message each endpoint handles; that requires studying the `rtw88` driver source.
+
+### Bluetooth interface observations
+
+**Interface 0 (Alt 0)** exposed three endpoints:
+
+```text
+0x81  IN   Interrupt   16 bytes
+0x02  OUT  Bulk       512 bytes
+0x82  IN   Bulk       512 bytes
+```
+
+**Interface 1** exposed two isochronous endpoints, `0x03` (OUT) and `0x83` (IN), under each of six alternate settings:
+
+| Alternate setting | `0x03` OUT max packet | `0x83` IN max packet |
+| --- | --- | --- |
+| 0 | 0 bytes | 0 bytes |
+| 1 | 9 bytes | 9 bytes |
+| 2 | 17 bytes | 17 bytes |
+| 3 | 25 bytes | 25 bytes |
+| 4 | 33 bytes | 33 bytes |
+| 5 | 49 bytes | 49 bytes |
+
+Alternate settings are **mutually exclusive configurations of one interface**; these values do not mean that all twelve listed endpoint descriptors are active at once. The results confirm descriptor visibility only, **not functional Bluetooth audio or pairing**.
+
+### Evidence and privacy
+
+The tables and terminal excerpts above are sufficient documentation for v0.2; **no new screenshot is required**. They contain USB IDs, endpoint addresses, classes, and packet sizes, but no SSIDs, BSSIDs, MAC addresses, IP addresses, hostnames, or user accounts. Avoid uploading a raw terminal capture if it includes additional system information.
+
+### Status and next steps
+
+- **Verified:** v0.2 compiles and enumerates three interfaces, including five Wi-Fi endpoints on interface 2.
+- **Not verified:** Wi-Fi association, packet transfer, Bluetooth pairing/audio, or operation under macOS.
+- **Next:** refactor the inspector into smaller functions, add CLI options (`--help`, `--verbose`), and begin portable tests before attempting any kernel-driver modifications.
 
 ## Reproducing the checks safely
 
@@ -439,7 +566,7 @@ Never upload the full raw scan output or shell history to a public repository.
 - [ ] Verify Wi-Fi association and actual data transfer
 - [ ] Isolate a repeatable USB mode-switch procedure
 - [x] Build and run a read-only USB inspector v0.1 in C/`libusb` on Debian
-- [ ] Inspect USB configurations, interfaces, and endpoints (v0.2)
+- [x] Inspect USB configurations, interfaces, and endpoints (v0.2)
 - [ ] Investigate the Linux kernel's `rtw88` driver architecture
 - [ ] Research feasible USB tooling and networking support on macOS
 - [ ] Add automated tests and reproducible build instructions
@@ -470,4 +597,4 @@ The two included initial screenshots contain no Wi-Fi SSIDs, router credentials,
 
 ---
 
-*Research log: first userspace diagnostic tool (v0.1) verified; native drivers, network connectivity testing, and macOS support remain pending.*
+*Research log: read-only USB Device Inspector v0.2 verified on Debian; custom drivers, network connectivity testing, and macOS support remain pending.*
